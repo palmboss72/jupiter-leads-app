@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+sqlite.db
+*.log
+cloudflared.exe
+tunnel.log
+server.log
+.manus-logs/
+migrate-to-turso.mjs

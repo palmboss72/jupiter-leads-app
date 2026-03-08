@@ -32,6 +32,7 @@ export const appRouter = router({
         sortBy: z.enum(["newest", "opportunity", "rating_low", "reviews_low", "website_quality"]).default("newest"),
         page: z.number().min(1).default(1),
         pageSize: z.number().min(1).max(200).default(50),
+        includeArchived: z.boolean().default(false),
       }))
       .query(async ({ input }) => {
         return db.getLeads(input);
@@ -92,6 +93,20 @@ export const appRouter = router({
       .input(z.object({ id: z.number() }))
       .mutation(async ({ input }) => {
         await db.deleteLead(input.id);
+        return { success: true };
+      }),
+
+    archive: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.archiveLead(input.id);
+        return { success: true };
+      }),
+
+    unarchive: publicProcedure
+      .input(z.object({ id: z.number() }))
+      .mutation(async ({ input }) => {
+        await db.unarchiveLead(input.id);
         return { success: true };
       }),
 

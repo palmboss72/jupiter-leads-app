@@ -48,6 +48,7 @@ export const leads = sqliteTable("leads", {
   enrichmentStatus: text("enrichmentStatus")
     .default("none").notNull(),
   lastEnrichedAt: integer("lastEnrichedAt", { mode: "timestamp" }),
+  archivedAt: integer("archivedAt", { mode: "timestamp" }),
   createdAt: integer("createdAt", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
   updatedAt: integer("updatedAt", { mode: "timestamp" }).default(sql`(unixepoch())`).notNull(),
 });

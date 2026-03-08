@@ -6,18 +6,25 @@ import type { InsertLead, InsertScrapeJob, InsertEnrichmentJob } from "../drizzl
 import { ENV } from "./_core/env";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _migrated = false;
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
-      
       const client = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
       _db = drizzle(client);
-
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
     }
+  }
+  if (_db && !_migrated) {
+    try {
+      await _db.run(sql`ALTER TABLE leads ADD COLUMN archivedAt INTEGER`);
+    } catch {
+      // Column already exists, safe to ignore
+    }
+    _migrated = true;
   }
   return _db;
 }
@@ -81,16 +88,24 @@ export interface LeadFilters {
   sortBy?: string;
   page?: number;
   pageSize?: number;
+  includeArchived?: boolean;
 }
 
 export async function getLeads(filters: LeadFilters = {}) {
   const db = await getDb();
   if (!db) return { leads: [], total: 0 };
 
-  const { search, industry, location, companySize, status, title, source, page = 1, pageSize = 50, sortBy = "newest" } = filters;
+  const { search, industry, location, companySize, status, title, source, page = 1, pageSize = 50, sortBy = "newest", includeArchived = false } = filters;
   const offset = (page - 1) * pageSize;
 
   const conditions = [];
+
+  // Exclude archived by default
+  if (!includeArchived) {
+    conditions.push(sql`${leads.archivedAt} IS NULL`);
+  } else {
+    conditions.push(sql`${leads.archivedAt} IS NOT NULL`);
+  }
 
   if (search) {
     conditions.push(
@@ -168,6 +183,20 @@ export async function updateLead(id: number, data: Partial<InsertLead>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(leads).set(data).where(eq(leads.id, id));
+  return getLeadById(id);
+}
+
+export async function archiveLead(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(leads).set({ archivedAt: new Date() } as any).where(eq(leads.id, id));
+  return getLeadById(id);
+}
+
+export async function unarchiveLead(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(leads).set({ archivedAt: null } as any).where(eq(leads.id, id));
   return getLeadById(id);
 }
 

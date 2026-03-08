@@ -33,6 +33,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -118,6 +120,7 @@ export default function LeadsDatabase() {
   const [showFilters, setShowFilters] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
+  const [showArchived, setShowArchived] = useState(false);
 
   const handleSort = (key: SortKey) => {
     setSortBy(key);
@@ -136,9 +139,28 @@ export default function LeadsDatabase() {
     sortBy: sortBy as "newest" | "opportunity" | "rating_low" | "reviews_low" | "website_quality",
     page,
     pageSize,
+    includeArchived: showArchived,
   };
 
   const { data, isLoading, refetch } = trpc.leads.list.useQuery(filters);
+
+  const archiveMutation = trpc.leads.archive.useMutation({
+    onSuccess: () => {
+      toast.success("Lead archived");
+      utils.leads.list.invalidate();
+      utils.leads.analytics.invalidate();
+    },
+    onError: () => toast.error("Failed to archive lead"),
+  });
+
+  const unarchiveMutation = trpc.leads.unarchive.useMutation({
+    onSuccess: () => {
+      toast.success("Lead restored");
+      utils.leads.list.invalidate();
+      utils.leads.analytics.invalidate();
+    },
+    onError: () => toast.error("Failed to restore lead"),
+  });
   const { data: csvData } = trpc.leads.exportCsv.useQuery(
     {
       search: filters.search,
@@ -261,6 +283,15 @@ export default function LeadsDatabase() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            size="sm"
+            onClick={() => { setShowArchived(!showArchived); setPage(1); }}
+            className="gap-2"
+          >
+            <Archive className="w-4 h-4" />
+            {showArchived ? "Viewing Archived" : "View Archived"}
+          </Button>
           <label>
             <input type="file" accept=".csv" onChange={handleImportCSV} className="hidden" />
             <Button variant="outline" size="sm" className="gap-2" asChild>
@@ -533,11 +564,34 @@ export default function LeadsDatabase() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Link href={`/leads/${lead.id}`}>
-                        <Button variant="ghost" size="icon" className="w-7 h-7">
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </Button>
-                      </Link>
+                      <div className="flex items-center gap-1">
+                        <Link href={`/leads/${lead.id}`}>
+                          <Button variant="ghost" size="icon" className="w-7 h-7">
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Button>
+                        </Link>
+                        {showArchived ? (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7 text-green-600 hover:text-green-700"
+                            onClick={(e) => { e.stopPropagation(); unarchiveMutation.mutate({ id: lead.id }); }}
+                            title="Restore lead"
+                          >
+                            <ArchiveRestore className="w-3.5 h-3.5" />
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="w-7 h-7 text-muted-foreground hover:text-orange-600"
+                            onClick={(e) => { e.stopPropagation(); archiveMutation.mutate({ id: lead.id }); }}
+                            title="Archive lead"
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

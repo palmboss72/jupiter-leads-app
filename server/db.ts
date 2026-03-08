@@ -86,6 +86,7 @@ export interface LeadFilters {
   title?: string;
   source?: string;
   sortBy?: string;
+  sortDir?: string;
   page?: number;
   pageSize?: number;
   includeArchived?: boolean;
@@ -95,7 +96,7 @@ export async function getLeads(filters: LeadFilters = {}) {
   const db = await getDb();
   if (!db) return { leads: [], total: 0 };
 
-  const { search, industry, location, companySize, status, title, source, page = 1, pageSize = 50, sortBy = "newest", includeArchived = false } = filters;
+  const { search, industry, location, companySize, status, title, source, page = 1, pageSize = 50, sortBy = "newest", sortDir = "desc", includeArchived = false } = filters;
   const offset = (page - 1) * pageSize;
 
   const conditions = [];
@@ -142,17 +143,19 @@ export async function getLeads(filters: LeadFilters = {}) {
 
   const allColumns = getTableColumns(leads);
 
+  const applyDir = (col: any) => sortDir === "asc" ? asc(col) : desc(col);
+
   let orderClause;
   if (sortBy === "opportunity") {
-    orderClause = desc(scoreExpr);
+    orderClause = sortDir === "asc" ? asc(scoreExpr) : desc(scoreExpr);
   } else if (sortBy === "rating_low") {
-    orderClause = asc(leads.googleRating);
+    orderClause = applyDir(leads.googleRating);
   } else if (sortBy === "reviews_low") {
-    orderClause = asc(leads.googleReviewCount);
+    orderClause = applyDir(leads.googleReviewCount);
   } else if (sortBy === "website_quality") {
-    orderClause = asc(leads.websiteQualityScore);
+    orderClause = applyDir(leads.websiteQualityScore);
   } else {
-    orderClause = desc(leads.createdAt);
+    orderClause = applyDir(leads.createdAt);
   }
 
   const [rows, countResult] = await Promise.all([

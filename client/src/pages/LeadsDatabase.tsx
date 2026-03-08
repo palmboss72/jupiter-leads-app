@@ -90,11 +90,13 @@ function SortableHeader({
   label,
   sortKey,
   currentSort,
+  sortDir,
   onSort,
 }: {
   label: string;
   sortKey: SortKey;
   currentSort: string;
+  sortDir: "asc" | "desc";
   onSort: (key: SortKey) => void;
 }) {
   const active = currentSort === sortKey;
@@ -104,7 +106,11 @@ function SortableHeader({
       onClick={() => onSort(sortKey)}
     >
       {label}
-      {active ? <ArrowDown className="w-3 h-3" /> : <ArrowUpDown className="w-3 h-3 opacity-40" />}
+      {active
+        ? sortDir === "asc"
+          ? <ArrowUp className="w-3 h-3" />
+          : <ArrowDown className="w-3 h-3" />
+        : <ArrowUpDown className="w-3 h-3 opacity-40" />}
     </button>
   );
 }
@@ -120,10 +126,19 @@ export default function LeadsDatabase() {
   const [showFilters, setShowFilters] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [showArchived, setShowArchived] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [showFilenameDialog, setShowFilenameDialog] = useState(false);
+  const [exportFilename, setExportFilename] = useState("");
 
   const handleSort = (key: SortKey) => {
-    setSortBy(key);
+    if (sortBy === key) {
+      setSortDir(sortDir === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(key);
+      setSortDir("desc");
+    }
     setPage(1);
   };
 
@@ -137,6 +152,7 @@ export default function LeadsDatabase() {
     status: status !== "all" ? status : undefined,
     title: title || undefined,
     sortBy: sortBy as "newest" | "opportunity" | "rating_low" | "reviews_low" | "website_quality",
+    sortDir,
     page,
     pageSize,
     includeArchived: showArchived,
@@ -253,6 +269,69 @@ export default function LeadsDatabase() {
     e.target.value = '';
   }, []);
 
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === leads.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(leads.map((l) => l.id)));
+    }
+  };
+
+  const buildAutoFilename = () => {
+    const parts: string[] = [];
+    if (filters.industry) parts.push(filters.industry.toLowerCase().replace(/\s+/g, "-"));
+    if (filters.location) parts.push(filters.location.toLowerCase().replace(/[,\s]+/g, "-"));
+    parts.push(new Date().toISOString().split("T")[0]);
+    return `jupiter-${parts.join("-")}`;
+  };
+
+  const openExportSelected = () => {
+    setExportFilename(buildAutoFilename());
+    setShowFilenameDialog(true);
+  };
+
+  const downloadSelectedCsv = () => {
+    const selected = leads.filter((l) => selectedIds.has(l.id));
+    const headers = [
+      "ID", "First Name", "Last Name", "Title", "Email", "Phone",
+      "Company", "Website", "Industry", "Company Size", "Location",
+      "Country", "Rating", "Reviews", "Address", "Website Quality Score",
+      "Opportunity Score", "Status", "Source", "LinkedIn", "Notes", "Created At",
+    ];
+    const rows = selected.map((l) => [
+      l.id, l.firstName ?? "", l.lastName ?? "", l.title ?? "",
+      l.email ?? "", l.phone ?? "", l.companyName ?? "",
+      l.companyWebsite ?? "", l.industry ?? "", l.companySize ?? "",
+      l.location ?? "", l.country ?? "", l.googleRating ?? "",
+      l.googleReviewCount ?? "", l.address ?? "",
+      (l as any).websiteQualityScore ?? "",
+      (l as any).opportunityScore ?? "",
+      l.status, l.source ?? "", l.linkedinUrl ?? "",
+      (l.notes ?? "").replace(/\n/g, " "), l.createdAt,
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${exportFilename.trim() || buildAutoFilename()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowFilenameDialog(false);
+    setSelectedIds(new Set());
+    toast.success(`Downloaded ${selected.length} leads`);
+  };
+
   const resetFilters = () => {
     setSearch("");
     setIndustry("all");
@@ -313,6 +392,43 @@ export default function LeadsDatabase() {
           </Button>
         </div>
       </div>
+
+      {/* Selection toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-lg px-4 py-2">
+          <span className="text-sm font-medium text-primary">{selectedIds.size} lead{selectedIds.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setSelectedIds(new Set())} className="gap-1">
+              <X className="w-3 h-3" />Clear
+            </Button>
+            <Button size="sm" onClick={openExportSelected} className="gap-2">
+              <Download className="w-4 h-4" />Download Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Filename dialog */}
+      {showFilenameDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-background rounded-xl shadow-xl p-6 w-full max-w-sm space-y-4">
+            <h2 className="text-base font-semibold">Name your CSV file</h2>
+            <div className="flex items-center gap-2">
+              <Input
+                value={exportFilename}
+                onChange={(e) => setExportFilename(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && downloadSelectedCsv()}
+                autoFocus
+              />
+              <span className="text-sm text-muted-foreground">.csv</span>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowFilenameDialog(false)}>Cancel</Button>
+              <Button size="sm" onClick={downloadSelectedCsv}>Download</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search & Filter Bar */}
       <Card className="shadow-sm">
@@ -417,21 +533,29 @@ export default function LeadsDatabase() {
           <Table>
             <TableHeader>
               <TableRow className="bg-muted/40">
+                <TableHead className="w-10">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 cursor-pointer"
+                    checked={leads.length > 0 && selectedIds.size === leads.length}
+                    onChange={toggleSelectAll}
+                  />
+                </TableHead>
                 <TableHead className="font-semibold text-foreground w-48">Contact</TableHead>
                 <TableHead className="font-semibold text-foreground">Company</TableHead>
                 <TableHead className="font-semibold text-foreground">Industry</TableHead>
                 <TableHead className="font-semibold text-foreground">Location</TableHead>
                 <TableHead className="font-semibold text-foreground">
-                  <SortableHeader label="⭐ Rating" sortKey="rating_low" currentSort={sortBy} onSort={handleSort} />
+                  <SortableHeader label="⭐ Rating" sortKey="rating_low" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
                 </TableHead>
                 <TableHead className="font-semibold text-foreground">
-                  <SortableHeader label="Reviews" sortKey="reviews_low" currentSort={sortBy} onSort={handleSort} />
+                  <SortableHeader label="Reviews" sortKey="reviews_low" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
                 </TableHead>
                 <TableHead className="font-semibold text-foreground">
-                  <SortableHeader label="🌐 Web" sortKey="website_quality" currentSort={sortBy} onSort={handleSort} />
+                  <SortableHeader label="🌐 Web" sortKey="website_quality" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
                 </TableHead>
                 <TableHead className="font-semibold text-foreground">
-                  <SortableHeader label="🎯 Opp." sortKey="opportunity" currentSort={sortBy} onSort={handleSort} />
+                  <SortableHeader label="🎯 Opp." sortKey="opportunity" currentSort={sortBy} sortDir={sortDir} onSort={handleSort} />
                 </TableHead>
                 <TableHead className="font-semibold text-foreground">Status</TableHead>
                 <TableHead className="font-semibold text-foreground w-10"></TableHead>
@@ -450,7 +574,7 @@ export default function LeadsDatabase() {
                 ))
               ) : leads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-16 text-muted-foreground">
+                  <TableCell colSpan={11} className="text-center py-16 text-muted-foreground">
                     <div className="flex flex-col items-center gap-2">
                       <Search className="w-8 h-8 opacity-30" />
                       <p className="font-medium">No leads found</p>
@@ -466,8 +590,16 @@ export default function LeadsDatabase() {
                 leads.map((lead) => (
                   <TableRow
                     key={lead.id}
-                    className="hover:bg-muted/40 transition-colors cursor-pointer"
+                    className={`hover:bg-muted/40 transition-colors cursor-pointer ${selectedIds.has(lead.id) ? "bg-primary/5" : ""}`}
                   >
+                    <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(lead.id); }}>
+                      <input
+                        type="checkbox"
+                        className="w-4 h-4 cursor-pointer"
+                        checked={selectedIds.has(lead.id)}
+                        onChange={() => toggleSelect(lead.id)}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Link href={`/leads/${lead.id}`}>
                         <div className="flex items-center gap-2">

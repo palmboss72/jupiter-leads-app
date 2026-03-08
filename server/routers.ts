@@ -30,6 +30,7 @@ export const appRouter = router({
         title: z.string().optional(),
         source: z.string().optional(),
         sortBy: z.enum(["newest", "opportunity", "rating_low", "reviews_low", "website_quality"]).default("newest"),
+        sortDir: z.enum(["asc", "desc"]).default("desc"),
         page: z.number().min(1).default(1),
         pageSize: z.number().min(1).max(200).default(50),
         includeArchived: z.boolean().default(false),

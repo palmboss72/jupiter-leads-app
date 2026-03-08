@@ -592,7 +592,7 @@ export default function LeadsDatabase() {
                     key={lead.id}
                     className={`hover:bg-muted/40 transition-colors cursor-pointer ${selectedIds.has(lead.id) ? "bg-primary/5" : ""}`}
                   >
-                    <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(lead.id); }}>
+                    <TableCell>
                       <input
                         type="checkbox"
                         className="w-4 h-4 cursor-pointer"
